@@ -1,37 +1,45 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'firebase_options.dart';
 import 'brand_products_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
 class Product {
   final String id;
   final String name;
-  final String description;
-  final double priceLYD;
+  final String package;
+  final double price;
   final int piecesInBox;
-  final int volumeMl;
+  final int quantity;
+  final List<String> scents;
 
   Product({
     required this.id,
     required this.name,
-    required this.description,
-    required this.priceLYD,
+    required this.package,
+    required this.price,
     required this.piecesInBox,
-    required this.volumeMl,
+    required this.quantity,
+    required this.scents,
   });
 
-  factory Product.fromJson(Map<String, dynamic> json) {
+  factory Product.fromFirestore(Map<String, dynamic> json, String docId) {
     return Product(
-      id: json['id'] ?? '',
+      id: docId,
       name: json['name'] ?? '',
-      description: json['description'] ?? '',
-      priceLYD: (json['priceLYD'] ?? 0.0).toDouble(),
-      piecesInBox: json['piecesInBox'] ?? 0,
-      volumeMl: json['volumeMl'] ?? 0,
+      package: json['package'] ?? '',
+      price: (json['price'] ?? 0.0).toDouble(),
+      piecesInBox: json['pieces_per_box'] ?? 0,
+      quantity: json['quantity'] ?? 0,
+      scents: List<String>.from(json['scents'] ?? []),
     );
   }
 }
@@ -65,23 +73,27 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    fetchCloudProducts();
+    fetchFirebaseProducts();
   }
 
-  // دالة جلب الأسعار الحية من السيرفر السحابي تلقائياً عند فتح التطبيق
-  Future<void> fetchCloudProducts() async {
-    // رابط السيرفر السحابي المجاني المؤقت لبيانات شركة أزمور
-    final String cloudUrl = "https://npoint.io";
+  // دالة جلب المنتجات من Firebase
+  Future<void> fetchFirebaseProducts() async {
     try {
-      final response = await http.get(Uri.parse(cloudUrl));
-      if (response.statusCode == 200) {
-        final List<dynamic> decodedData = json.decode(utf8.decode(response.bodyBytes));
-        setState(() {
-          primaData = decodedData.map((p) => Product.fromJson(p)).toList();
-          isLoading = false;
-        });
-      }
+      final QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .doc('prima')
+          .collection('shampoos')
+          .get();
+
+      setState(() {
+        primaData = snapshot.docs
+            .map((doc) => Product.fromFirestore(
+                doc.data() as Map<String, dynamic>, doc.id))
+            .toList();
+        isLoading = false;
+      });
     } catch (e) {
+      print('Error fetching products: $e');
       setState(() => isLoading = false);
     }
   }
@@ -112,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icon(Icons.refresh, color: gold),
               onPressed: () {
                 setState(() => isLoading = true);
-                fetchCloudProducts();
+                fetchFirebaseProducts();
               },
             )
           ],
